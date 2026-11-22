@@ -1,0 +1,11 @@
+# VTC dev host. OpenDeepWiki already owns host port 3000, and this stack
+# reaches the browser through Tailscale serve rather than a host proxy on 80.
+# The published host ports are loopback only; the in-container ports stay
+# 8000 and 3000.
+services:
+  app:
+    ports: !override
+      - "127.0.0.1:18010:8000"
+  frontend:
+    ports: !override
+      - "127.0.0.1:13010:3000"
