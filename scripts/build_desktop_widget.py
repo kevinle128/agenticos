@@ -18,7 +18,8 @@ def run(command: list[str], env: dict[str, str]) -> str:
     """Keep signing credentials out of exceptions and command logs."""
     result = subprocess.run(command, env=env, capture_output=True, text=True, check=False)
     if result.returncode:
-        detail = "" if command[0] in {"security", "codesign"} else f": {result.stderr.strip()}"
+        # codesign reports the chain or timestamp failure and does not echo secrets.
+        detail = "" if command[0] == "security" else f": {result.stderr.strip()}"
         raise RuntimeError(f"Widget build command failed: {command[0]}{detail}")
     return result.stdout
 
@@ -78,6 +79,30 @@ def sign(bundle: Path, entitlements: Path, env: dict[str, str]) -> None:
                 ],
                 env,
             )
+            # The Mac has the Apple root. The Developer ID intermediate has to sit
+            # in this keychain or codesign cannot build a chain to that root.
+            intermediate = folder / "DeveloperIDG2CA.cer"
+            run(
+                [
+                    "curl",
+                    "-fsSL",
+                    "--retry",
+                    "3",
+                    "-o",
+                    str(intermediate),
+                    "https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer",
+                ],
+                env,
+            )
+            added = subprocess.run(
+                ["security", "add-certificates", "-k", keychain, str(intermediate)],
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if added.returncode and "already in" not in added.stderr:
+                raise RuntimeError("Widget build command failed: security")
             identities = run(
                 ["security", "find-identity", "-v", "-p", "codesigning", keychain], env
             )
