@@ -50,6 +50,13 @@ def sign(bundle: Path, entitlements: Path, env: dict[str, str]) -> None:
         keychain = str(folder / "widget.keychain-db")
         password = os.urandom(24).hex()
         run(["security", "create-keychain", "-p", password, keychain], env)
+        listed = subprocess.run(
+            ["security", "list-keychains", "-d", "user"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        previous = [line.strip().strip('"') for line in listed.stdout.splitlines() if line.strip()]
         try:
             run(["security", "unlock-keychain", "-p", password, keychain], env)
             run(
@@ -111,6 +118,8 @@ def sign(bundle: Path, entitlements: Path, env: dict[str, str]) -> None:
             )
             if len(matches) != 1:
                 raise RuntimeError("The widget needs exactly one Developer ID Application identity")
+            # codesign ignores --keychain unless that keychain is also on the search list.
+            run(["security", "list-keychains", "-d", "user", "-s", keychain, *previous], env)
             run(
                 [
                     "codesign",
@@ -129,6 +138,11 @@ def sign(bundle: Path, entitlements: Path, env: dict[str, str]) -> None:
                 env,
             )
         finally:
+            if previous:
+                subprocess.run(
+                    ["security", "list-keychains", "-d", "user", "-s", *previous],
+                    check=False,
+                )
             run(["security", "delete-keychain", keychain], env)
 
 
